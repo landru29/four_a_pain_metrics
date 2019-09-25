@@ -19,6 +19,7 @@
 #include "wifi.h"
 #include "http.h"
 #include <Adafruit_MAX31855.h>
+#include "led.h"
 
 // Default connection is using software SPI, but comment and uncomment one of
 // the two examples below to switch between software SPI and hardware SPI:
@@ -31,9 +32,14 @@
 
 #define A (70.0/46.0)
 #define B (20 - 7.0 * A)
-#define SET_SIZE 5
 
-int setOf[SET_SIZE] = {0, 0, 0, 0, 0};
+#define NaN 10000
+
+#define SET_SIZE 10
+int ovenSet[SET_SIZE];
+int ambientSet[SET_SIZE];
+
+
 WifiConnect* myWifi;
 
 Https* clientHttp;
@@ -44,6 +50,11 @@ Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
 void setup() {
   
   Serial.begin(9600);
+
+  for(int i=0; i<SET_SIZE; i++) {
+    ovenSet[i] = 0;
+    ambientSet[i] = 0;
+  }
 
   myWifi = new WifiConnect("thermocouple");
   clientHttp = new Https();
@@ -56,43 +67,95 @@ void setup() {
   myWifi->startWPSPBC();
 }
 
-void loop() {
+int lisser(int value, int* lisseur) {
+    for (int i = 1; i< SET_SIZE; i++) {
+      lisseur[i-1] = lisseur[i];
+      lisseur[SET_SIZE-1] = value;
+     }
 
-  
-  // basic readout test, just print the current temp
-   double ambient = thermocouple.readInternal();
-   
-   Serial.print("Ambient: ");
-   Serial.println(String(ambient));
-   
-   
+     int lisse = 0;
+     for (int i = 0; i< SET_SIZE; i++) {
+      lisse += lisseur[i];
+     }
+     
+     return lisse / SET_SIZE;
+}
 
+
+int getOven() {
    double c = thermocouple.readCelsius();
    if (!isnan(c)) {
       if (c<0) {
         c = -c;
       }
-     for (int i = 1; i< SET_SIZE; i++) {
-      setOf[i-1] = setOf[i];
-      setOf[SET_SIZE-1] = (int)(c * A + B);
-     }
 
-     int lisse = 0;
-     for (int i = 0; i< SET_SIZE; i++) {
-      lisse += setOf[i];
-     }
-     lisse /= SET_SIZE;
+     int oven = lisser(c * A + B, ovenSet);
     
      Serial.print("Four: ");
-     Serial.println(String(lisse));
+     Serial.println(String(oven));
 
-     clientHttp->addValue(lisse);
-     clientHttp->flushData();
+     return oven;
      
      
-   } else {
-     Serial.println("Something wrong with thermocouple!");
    }
+   return NaN;
+}
+
+int getAmbient() {
+  double c = thermocouple.readInternal();
+  if (!isnan(c)) {
+      if (c<0) {
+        c = -c;
+      }
+
+     int ambient = lisser((int)c, ambientSet);
+    
+     Serial.print("Ambient: ");
+     Serial.println(String(ambient));
+
+     return ambient;
+     
+     
+   }
+   return NaN;
+}
+
+void loop() {
+   Led::switchOff();
+  
+  int oven = 0;
+  int ambient = 0;
+
+
+   for(int i=0; i<SET_SIZE; i++) {
+      Led::switchOn();
+      do {
+        oven = getOven();
+        if (oven == NaN) {
+          delay(1000);
+        }
+      } while (oven == NaN);
+
+      do {
+        ambient = getAmbient();
+        if (ambient == NaN) {
+          delay(1000);
+        }
+      } while (ambient == NaN);
+      
+      Led::switchOff();
+      delay(1000 * 1);
+   }
+   
+   if ((oven != NaN) && (ambient != NaN)) {
+     Led::switchOn();
+     clientHttp->addValue(oven, ambient);
+     clientHttp->flushData();
+     Led::switchOff();
+   }
+
+   Serial.println("*****************************************\nsleeping ...\n");
+
  
    delay(10000);
 }

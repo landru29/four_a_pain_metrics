@@ -24,3 +24,11 @@ void Led::displayStatus(unsigned int type) {
     delay(300);
   }
 }
+
+void Led::switchOn() {
+  digitalWrite(Led::pin, LOW);
+}
+
+void Led::switchOff() {
+  digitalWrite(Led::pin, HIGH);
+}

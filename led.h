@@ -8,6 +8,9 @@ class Led {
     Led(int pin);
     static int pin;
     static void displayStatus(unsigned int type);
+    static void switchOn();
+    static void switchOff();
+    
 };
 
 #endif

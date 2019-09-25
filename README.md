@@ -4,7 +4,15 @@
 
 * Have a WEMOS D1 Mini
 * Have a sane installation of Arduino IDE
-* Have WEMOS toolkit installed (https://github.com/esp8266/Arduino)
+* Have WEMOS toolkit installed (<https://github.com/esp8266/Arduino>)
+
+## Hardware
+
+* Wemos D1 Mini
+* MAX31855
+* K type Thermocouple
+
+All these items can be found on <https://aliexpress.com>
 
 ## Schema
 
@@ -22,4 +30,21 @@ MAX31855 is connected to Wemos:
 
 * Create a file `config.h` based on `config.h.sample`
 * Compile program
-²
+
+## config.h
+
+The file shold contain the following definition:
+
+```c
+#define TOKEN "xxxx"
+```
+
+The token is the write token you created in the OVH manager (Cloud > metrics): <https://www.ovh.com/manager/cloud/#/>
+
+## Fingerprint
+
+in `http.cpp`, you must check to have the correct fingerprint:
+
+```bash
+echo | openssl s_client -showcerts -servername opentsdb.gra1.metrics.ovh.net -connect opentsdb.gra1.metrics.ovh.net:443 2>/dev/null | openssl x509 -noout -fingerprint -sha1 -inform pem | sed -e "s/.*=//g" | sed -e "s/\:/ /g"
+```

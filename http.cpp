@@ -1,6 +1,7 @@
 #include "http.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
+#include <ESP8266HTTPClient.h>
 #include <malloc.h>
 #include <base64.h>
 #include <string.h>
@@ -12,66 +13,82 @@
 // Use web browser to view and copy
 // SHA1 fingerprint of the certificate
 // echo | openssl s_client -showcerts -servername opentsdb.gra1.metrics.ovh.net -connect opentsdb.gra1.metrics.ovh.net:443 2>/dev/null | openssl x509 -noout -fingerprint -sha1 -inform pem | sed -e "s/.*=//g" | sed -e "s/\:/ /g"
-const char* fingerprint = "E5 7E C6 FA FC 55 F7 9A 98 0B 41 A6 63 DF C2 F8 84 F3 4E B1";
+#define fingerprint "E5 7E C6 FA FC 55 F7 9A 98 0B 41 A6 63 DF C2 F8 84 F3 4E B1"
 
 Https::Https() {
-  this->values = (int*) malloc(1);
+  this->sensor = (Sensor*) malloc(1);
   this->bufferSize=0;
 }
 
-void Https::addValue(int val) {
+void Https::addValueAndFlush(int val, int ambient) {
+  this->addValue(val, ambient);
+  this->flushData();
+}
+
+void Https::addValue(int val, int ambient) {
   this->bufferSize++;
-  this->values = (int*)realloc(this->values, this->bufferSize * sizeof(int));
-  this->values[this->bufferSize-1] = val;
+  this->sensor = (Sensor*)realloc(this->sensor, this->bufferSize * sizeof(Sensor));
+
+  Sensor sensor;
+  sensor.oven = val;
+  sensor.ambient = ambient;
+  
+  this->sensor[this->bufferSize-1] = sensor;
 }
 
 
 void Https::flushData() {
   String body("[");
   for(int i = 0; i<this->bufferSize; i++) {
-   body += String("{\"metric\":\"temperature\",\"value\":") + String(this->values[i]) + String(",\"tags\":{}}");
+   body += String("{") + 
+        "\"metric\":\"temperature\"," +
+        "\"value\":" + String(this->sensor[i].oven) + "," +
+        "\"tags\":{}" +
+    "},";
+    body += String("{") + 
+        "\"metric\":\"ambient\"," +
+        "\"value\":" + String(this->sensor[i].ambient) + "," +
+        "\"tags\":{}" +
+    "}";
+   
    if (i < this->bufferSize-1) {
     body += String(",");
    }
   }
   body += String("]");
-  this->values = (int*)realloc(this->values, 1);
+  this->sensor = (Sensor*)realloc(this->sensor, 1);
   this->bufferSize=0;
 
   String token = String("DESC:") + TOKEN;
-  String base64Token = base64::encode(token);
+  String base64Token = String("basic ") + base64::encode(token, false);
 
-  WiFiClientSecure client;
-  Serial.print("connecting to ");
-  Serial.println(HOST);
-  if (!client.connect(HOST, 443)) {
-    Serial.println("connection failed");
-    return;
-  }
+  Serial.println("\n------------------------------------------------");
+  Serial.println(String("POST ") + HOST + URL);
+  //Serial.println(base64Token);
+  Serial.println(body);
+  Serial.println("------------------------------------------------\n");
 
-  if (client.verify(fingerprint, HOST)) {
-    Serial.println("certificate matches");
-  } else {
-    Serial.println("certificate doesn't match");
-  }
+  HTTPClient http;
+  
+  int beginResult = http.begin(String("https://") + HOST + URL, fingerprint);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", base64Token);
+  
+  int httpCode = http.POST(body);
+  String response = http.getString();
 
-  Serial.print("requesting URL: ");
-  Serial.println(URL);
-
-  client.print(String("POST ") + URL + " HTTP/1.1\r\n" +
-               "Host: " + HOST + "\r\n" +
-               "Content-Length: " + String(body.length())  + "\r\n" +
-               "Authorization: basic " + base64Token + "\r\n" +
-               "Content-Type: application/json\r\n\r\n" + body);
-
-  Serial.println("request sent");
-  while (client.connected()) {
-    String line = client.readStringUntil('\n');
-     Serial.println(line);
-    if (line == "\r") {
-      Serial.println("headers received");
-      break;
-    }
-  }
+  Serial.print("beginResult: ");
+  Serial.print(beginResult);
+  Serial.println();
+  
+  Serial.print("http: ");
+  Serial.print(httpCode);
+  Serial.println();
+  
+  Serial.print("response: ");
+  Serial.println(response);
+  Serial.println();
+  
+  http.end();
 
 }
