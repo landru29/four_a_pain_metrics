@@ -1,5 +1,6 @@
 #include "wifi.h"
 #include <ESP8266WiFi.h>
+#include <Arduino.h>
 #include <string.h>
 #include "led.h"
 
